@@ -17,15 +17,17 @@ type AdminHandler struct {
 	ruleDAO    *dao.RuleDAO
 	doctorDAO  *dao.DoctorDAO
 	pushLogDAO *dao.PushLogDAO
+	syncLogDAO *dao.SyncLogDAO
 	qcEngine   *qc.Engine
 	syncSvc    *sync.SyncService
 }
 
-func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO *dao.PushLogDAO, qcEngine *qc.Engine, syncSvc *sync.SyncService) *AdminHandler {
+func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO *dao.PushLogDAO, syncLogDAO *dao.SyncLogDAO, qcEngine *qc.Engine, syncSvc *sync.SyncService) *AdminHandler {
 	return &AdminHandler{
 		ruleDAO:    ruleDAO,
 		doctorDAO:  doctorDAO,
 		pushLogDAO: pushLogDAO,
+		syncLogDAO: syncLogDAO,
 		qcEngine:   qcEngine,
 		syncSvc:    syncSvc,
 	}
@@ -43,6 +45,7 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 	r.POST("/admin/sync", h.RunSync)        // 手动触发 HIS 增量同步
 	r.POST("/admin/sync/csv", h.RunSyncCSV) // CSV 手工导入（阶段一兜底）
+	r.GET("/admin/sync/logs", h.ListSyncLogs) // 同步日志查询
 
 	r.POST("/admin/qc/run", h.RunQC)
 
@@ -183,6 +186,19 @@ func (h *AdminHandler) RunQC(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+// ListSyncLogs 同步日志列表
+func (h *AdminHandler) ListSyncLogs(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+
+	logs, total, err := h.syncLogDAO.List(page, pageSize)
+	if err != nil {
+		response.ServerError(c, "查询同步日志失败")
+		return
+	}
+	response.SuccessPage(c, logs, total, page, pageSize)
 }
 
 // ListPushLogs 推送日志

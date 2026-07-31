@@ -1,6 +1,7 @@
 # Go
 backend/tmp/
 backend/*.exe
+backend/*.exe~
 backend/*.test
 *.out
 

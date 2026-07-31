@@ -31,7 +31,7 @@ func main() {
 	}
 
 	fmt.Printf("连接数据库 %s/%s ...\n", cfg.Database.Server, cfg.Database.Name)
-	db, err := sqlx.Connect("sqlserver", cfg.Database.DSN())
+	db, err := sqlx.Connect("mssql", cfg.Database.DSN())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "连接数据库失败: %v\n", err)
 		os.Exit(1)

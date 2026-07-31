@@ -1,8 +1,6 @@
 package dao
 
 import (
-	"fmt"
-
 	"hospital-qc-wework/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -89,12 +87,11 @@ func (d *RuleDAO) List(page, pageSize int) ([]model.QCRule, int, error) {
 
 	offset := (page - 1) * pageSize
 	var rules []model.QCRule
-	// go-mssqldb 对 OFFSET/FETCH 中的 ? 占位符支持不佳，整数直接内联（page/pageSize 已由 Atoi 校验，无注入风险）
-	err = d.db.Select(&rules, fmt.Sprintf(`
+	err = d.db.Select(&rules, `
 		SELECT * FROM qc_rule
 		ORDER BY priority ASC, id ASC
-		OFFSET %d ROWS FETCH NEXT %d ROWS ONLY
-	`, offset, pageSize))
+		OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+	`, offset, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}

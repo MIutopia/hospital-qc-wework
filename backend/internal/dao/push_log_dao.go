@@ -1,8 +1,6 @@
 package dao
 
 import (
-	"fmt"
-
 	"hospital-qc-wework/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -92,9 +90,9 @@ func (d *PushLogDAO) List(page, pageSize int, status string) ([]model.PushLog, i
 	if status != "" {
 		dataQuery += ` WHERE push_status = ?`
 	}
-	// go-mssqldb 对 OFFSET/FETCH 中的 ? 占位符支持不佳，整数直接内联（page/pageSize 已由 Atoi 校验，无注入风险）
-	dataQuery += fmt.Sprintf(` ORDER BY created_at DESC OFFSET %d ROWS FETCH NEXT %d ROWS ONLY`, offset, pageSize)
-	err = d.db.Select(&logs, dataQuery, args...)
+	dataQuery += ` ORDER BY created_at DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`
+	dataArgs := append(args, offset, pageSize)
+	err = d.db.Select(&logs, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -8,8 +8,10 @@ import (
 )
 
 // InitDB 初始化数据库连接池
+// 注意：驱动名必须用 "mssql"（processQueryText=true 才替换 ? 占位符）；
+//      "sqlserver" 别名不处理 ?，参数化查询会报 mssql: "?"附近有语法错误
 func InitDB(cfg config.DBConfig) (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlserver", cfg.DSN())
+	db, err := sqlx.Connect("mssql", cfg.DSN())
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +31,7 @@ func InitDB(cfg config.DBConfig) (*sqlx.DB, error) {
 
 // InitHISDB 初始化 HIS 数据库连接（只读）
 func InitHISDB(cfg config.HISDBConfig) (*sqlx.DB, error) {
-	db, err := sqlx.Connect("sqlserver", cfg.HISDSN())
+	db, err := sqlx.Connect("mssql", cfg.HISDSN())
 	if err != nil {
 		return nil, err
 	}

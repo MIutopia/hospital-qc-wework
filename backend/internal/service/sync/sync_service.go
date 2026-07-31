@@ -19,19 +19,21 @@ import (
 // SyncService 数据同步服务
 // 从 HIS 数据仓库增量同步住院病例到业务库 inpatient_case 表。
 type SyncService struct {
-	hisDAO    *dao.HISDAO
-	caseDAO   *dao.CaseDAO
-	doctorDAO *dao.DoctorDAO
-	batchSize int
+	hisDAO     *dao.HISDAO
+	caseDAO    *dao.CaseDAO
+	doctorDAO  *dao.DoctorDAO
+	syncLogDAO *dao.SyncLogDAO
+	batchSize  int
 }
 
-// NewSyncService 创建同步服务
-func NewSyncService(hisDAO *dao.HISDAO, caseDAO *dao.CaseDAO, doctorDAO *dao.DoctorDAO, batchSize int) *SyncService {
+// NewSyncService 创建同步服务（hisDAO 可空：未配置 HIS 时 CSV 导入仍可用）
+func NewSyncService(hisDAO *dao.HISDAO, caseDAO *dao.CaseDAO, doctorDAO *dao.DoctorDAO, syncLogDAO *dao.SyncLogDAO, batchSize int) *SyncService {
 	return &SyncService{
-		hisDAO:    hisDAO,
-		caseDAO:   caseDAO,
-		doctorDAO: doctorDAO,
-		batchSize: batchSize,
+		hisDAO:     hisDAO,
+		caseDAO:    caseDAO,
+		doctorDAO:  doctorDAO,
+		syncLogDAO: syncLogDAO,
+		batchSize:  batchSize,
 	}
 }
 
@@ -49,30 +51,39 @@ type SyncResult struct {
 func (s *SyncService) RunSync() (*SyncResult, error) {
 	start := time.Now()
 	log.Info().Msg("数据同步开始")
+	tracker := s.newSyncLogTracker(model.SyncTypeHIS)
 
 	// 未配置 HIS 连接时给出明确提示（CSV 导入仍可用）
 	if s.hisDAO == nil {
-		return nil, fmt.Errorf("HIS 数据库未配置连接（请设置 HIS_DB_USER / HIS_DB_PASS 环境变量，或信息科填写连接信息后重试）")
+		err := fmt.Errorf("HIS 数据库未配置连接（请设置 HIS_DB_USER / HIS_DB_PASS 环境变量，或信息科填写连接信息后重试）")
+		tracker.Finish(model.SyncStatusFailed, nil, err)
+		return nil, err
 	}
 
 	// 1. 计算增量断点
 	since, err := s.caseDAO.GetMaxSyncTime()
 	if err != nil {
-		return nil, fmt.Errorf("获取同步断点失败: %w", err)
+		err = fmt.Errorf("获取同步断点失败: %w", err)
+		tracker.Finish(model.SyncStatusFailed, nil, err)
+		return nil, err
 	}
 	log.Info().Str("since", since).Msg("增量断点")
 
 	// 2. 拉取 HIS 增量病案数据
 	hisCases, err := s.hisDAO.QueryNewCases(&since, s.batchSize)
 	if err != nil {
-		return nil, fmt.Errorf("查询 HIS 病案数据失败: %w", err)
+		err = fmt.Errorf("查询 HIS 病案数据失败: %w", err)
+		tracker.Finish(model.SyncStatusFailed, nil, err)
+		return nil, err
 	}
 	log.Info().Int("count", len(hisCases)).Msg("HIS 增量数据拉取完成")
 
 	// 3. 拉取入院记录（补充主诉/现病史）
 	admissionRecords, err := s.hisDAO.QueryAdmissionRecords(&since, s.batchSize)
 	if err != nil {
-		return nil, fmt.Errorf("查询 HIS 入院记录失败: %w", err)
+		err = fmt.Errorf("查询 HIS 入院记录失败: %w", err)
+		tracker.Finish(model.SyncStatusFailed, nil, err)
+		return nil, err
 	}
 	log.Info().Int("count", len(admissionRecords)).Msg("HIS 入院记录拉取完成")
 
@@ -126,6 +137,7 @@ func (s *SyncService) RunSync() (*SyncResult, error) {
 		Str("elapsed", result.Elapsed).
 		Msg("数据同步完成")
 
+	tracker.Finish(model.SyncStatusSuccess, result, nil)
 	return result, nil
 }
 
@@ -133,10 +145,13 @@ func (s *SyncService) RunSync() (*SyncResult, error) {
 // 支持中文表头：住院号,姓名,性别,年龄,入院时间,出院时间,入院科室,住院医师,西医初步诊断
 func (s *SyncService) SyncFromCSV(filePath string) (*SyncResult, error) {
 	start := time.Now()
+	tracker := s.newSyncLogTracker(model.SyncTypeCSV)
 
 	f, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("打开 CSV 文件失败: %w", err)
+		err = fmt.Errorf("打开 CSV 文件失败: %w", err)
+		tracker.Finish(model.SyncStatusFailed, nil, err)
+		return nil, err
 	}
 	defer f.Close()
 
@@ -146,7 +161,9 @@ func (s *SyncService) SyncFromCSV(filePath string) (*SyncResult, error) {
 	// 读取表头
 	header, err := reader.Read()
 	if err != nil {
-		return nil, fmt.Errorf("读取 CSV 表头失败: %w", err)
+		err = fmt.Errorf("读取 CSV 表头失败: %w", err)
+		tracker.Finish(model.SyncStatusFailed, nil, err)
+		return nil, err
 	}
 	colIndex := make(map[string]int, len(header))
 	for i, name := range header {
@@ -203,6 +220,7 @@ func (s *SyncService) SyncFromCSV(filePath string) (*SyncResult, error) {
 		Str("elapsed", result.Elapsed).
 		Msg("CSV 导入完成")
 
+	tracker.Finish(model.SyncStatusSuccess, result, nil)
 	return result, nil
 }
 
@@ -385,6 +403,61 @@ func (s *SyncService) parseCSVRow(record []string, col map[string]int) *model.In
 	}
 
 	return ic
+}
+
+// syncLogTracker 同步日志跟踪器：开始创建 RUNNING 记录，结束更新为 SUCCESS/FAILED
+type syncLogTracker struct {
+	dao     *dao.SyncLogDAO
+	logID   int64
+	started time.Time
+}
+
+// newSyncLogTracker 创建跟踪器并写入 RUNNING 日志（DAO 为空或写库失败时静默降级，不影响同步主流程）
+func (s *SyncService) newSyncLogTracker(syncType string) *syncLogTracker {
+	t := &syncLogTracker{dao: s.syncLogDAO, started: time.Now()}
+	if s.syncLogDAO == nil {
+		return t
+	}
+	id, err := s.syncLogDAO.Create(&model.SyncLog{
+		SyncType:  syncType,
+		Status:    model.SyncStatusRunning,
+		StartedAt: t.started,
+	})
+	if err != nil {
+		log.Warn().Err(err).Msg("同步日志创建失败")
+		return t
+	}
+	t.logID = id
+	return t
+}
+
+// Finish 更新同步日志终态
+func (t *syncLogTracker) Finish(status string, res *SyncResult, syncErr error) {
+	if t.dao == nil || t.logID == 0 {
+		return
+	}
+	elapsedMS := time.Since(t.started).Milliseconds()
+	now := time.Now()
+	var errMsg *string
+	if syncErr != nil {
+		m := syncErr.Error()
+		errMsg = &m
+	}
+	var total, newC, upd int
+	if res != nil {
+		total, newC, upd = res.TotalSynced, res.NewCases, res.Updated
+	}
+	if err := t.dao.Update(t.logID, &model.SyncLog{
+		Status:      status,
+		TotalSynced: total,
+		NewCases:    newC,
+		Updated:     upd,
+		ErrorMsg:    errMsg,
+		FinishedAt:  &now,
+		ElapsedMS:   &elapsedMS,
+	}); err != nil {
+		log.Warn().Err(err).Msg("同步日志更新失败")
+	}
 }
 
 // ----- 工具函数 -----

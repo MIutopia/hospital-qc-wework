@@ -25,11 +25,11 @@ database:
 his_database:
   server: "localhost"      # 单机部署：与业务数据库同服务器（院方要求）
   port: 1433
-  name: "med_record"       # HIS 数据仓库住院库（表结构已确认，仅需只读）
+  name: "database"       # HIS 数据仓库住院库（表结构已确认，仅需只读）
   user: ""                 # 【院方填写】质控系统只读账号（如 qc_readonly，SQL Server 身份验证）
   password: ""             # 【院方填写】只读账号密码
   sync_interval: "24h"     # 全量同步间隔
-  sync_time: "06:00"       # 每日同步时间
+  sync_time: "23:00"       # 每日同步时间
 
 wework:
   corp_id: ""          # 从环境变量 WEWORK_CORP_ID 读取

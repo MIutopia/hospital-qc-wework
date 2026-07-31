@@ -1,0 +1,30 @@
+# Go
+backend/tmp/
+backend/*.exe
+backend/*.test
+*.out
+
+# Environment
+.env
+*.local.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Build output
+deploy/out/

@@ -1,6 +1,8 @@
 package dao
 
 import (
+	"fmt"
+
 	"hospital-qc-wework/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -55,11 +57,12 @@ func (d *DoctorDAO) List(page, pageSize int) ([]model.DoctorWeWork, int, error) 
 
 	offset := (page - 1) * pageSize
 	var docs []model.DoctorWeWork
-	err = d.db.Select(&docs, `
+	// go-mssqldb 对 OFFSET/FETCH 中的 ? 占位符支持不佳，整数直接内联（page/pageSize 已由 Atoi 校验，无注入风险）
+	err = d.db.Select(&docs, fmt.Sprintf(`
 		SELECT * FROM doctor_wework
 		ORDER BY doctor_name ASC
-		OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-	`, offset, pageSize)
+		OFFSET %d ROWS FETCH NEXT %d ROWS ONLY
+	`, offset, pageSize))
 	if err != nil {
 		return nil, 0, err
 	}

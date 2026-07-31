@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"fmt"
 	"time"
 
 	"hospital-qc-wework/internal/model"
@@ -151,7 +152,8 @@ func (d *CaseDAO) GetDoctorCases(doctorID int64, status string, page, pageSize i
 
 	offset := (page - 1) * pageSize
 	var cases []model.InpatientCase
-	err = d.db.Select(&cases, `
+	// go-mssqldb 对 OFFSET/FETCH 中的 ? 占位符支持不佳，整数直接内联（page/pageSize 已由 Atoi 校验，无注入风险）
+	err = d.db.Select(&cases, fmt.Sprintf(`
 		SELECT id, case_no, patient_name, patient_gender, patient_age,
 		       admit_time, discharge_time, dept_id, dept_name,
 		       doctor_id, doctor_name, diagnosis,
@@ -160,8 +162,8 @@ func (d *CaseDAO) GetDoctorCases(doctorID int64, status string, page, pageSize i
 		WHERE doctor_id = ?
 		  AND (qc_status = ? OR ? = '')
 		ORDER BY qc_time DESC
-		OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-	`, doctorID, status, status, offset, pageSize)
+		OFFSET %d ROWS FETCH NEXT %d ROWS ONLY
+	`, offset, pageSize), doctorID, status, status)
 	if err != nil {
 		return nil, 0, err
 	}

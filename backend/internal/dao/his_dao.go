@@ -1,6 +1,8 @@
 package dao
 
 import (
+	"fmt"
+
 	"hospital-qc-wework/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -20,8 +22,9 @@ func NewHISDAO(db *sqlx.DB) *HISDAO {
 func (d *HISDAO) QueryNewCases(since *string, limit int) ([]model.HISCaseman, error) {
 	var cases []model.HISCaseman
 
-	query := `
-		SELECT TOP (?)
+	// go-mssqldb 对 TOP (?) 参数占位符支持不佳，limit 为 int 直接内联
+	query := fmt.Sprintf(`
+		SELECT TOP (%d)
 		       首页序列, 就诊卡号, 住院号, 姓名, 性别, 住院年龄, 出生日期,
 		       入院时间, 出院时间, 住院天数, 出院标识,
 		       当前科室, 当前病区, 入院科室, 入院病区, 出院科室, 出院方式,
@@ -30,10 +33,10 @@ func (d *HISDAO) QueryNewCases(since *string, limit int) ([]model.HISCaseman, er
 		       主任医师, 主治医师, 责任护士, 住院医师, 病历质量,
 		       质控日期, 质控医生, 录入时间
 		FROM dbo.hospitalisation_case_man
-	`
+	`, limit)
 
 	// 增量模式：只取录入时间晚于同步断点的数据
-	args := []interface{}{limit}
+	args := []interface{}{}
 	if since != nil && *since != "" {
 		query += ` WHERE 录入时间 > ? ORDER BY 录入时间 ASC`
 		args = append(args, *since)
@@ -53,16 +56,17 @@ func (d *HISDAO) QueryNewCases(since *string, limit int) ([]model.HISCaseman, er
 func (d *HISDAO) QueryAdmissionRecords(since *string, limit int) ([]model.HISAdmissionRecord, error) {
 	var records []model.HISAdmissionRecord
 
-	query := `
-		SELECT TOP (?)
+	// go-mssqldb 对 TOP (?) 参数占位符支持不佳，limit 为 int 直接内联
+	query := fmt.Sprintf(`
+		SELECT TOP (%d)
 		       患者姓名, 性别, 年龄, 入院时间, 记录时间,
 		       主诉, 现病史, 既往史, 个人史, 婚育史, 月经史, 家族史,
 		       体格检查, 专科情况, 辅助检查,
 		       中医初步诊断, 西医初步诊断, 录入时间
 		FROM dbo.med_record_hospitail_rceord
-	`
+	`, limit)
 
-	args := []interface{}{limit}
+	args := []interface{}{}
 	if since != nil && *since != "" {
 		query += ` WHERE 录入时间 > ? ORDER BY 录入时间 ASC`
 		args = append(args, *since)

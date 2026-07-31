@@ -247,11 +247,14 @@ DELETE /api/v1/admin/rules/:id
 
 ### 3.2 数据同步
 
-#### 手动触发同步
+#### 手动触发同步（HIS 增量拉取）
 
 ```
 POST /api/v1/admin/sync
 ```
+
+从 HIS 数据仓库 `med_record` 库增量同步住院病例到业务库 `inpatient_case`。
+增量断点 = 业务库最大 `sync_time`；首次同步取最近 30 天。
 
 **响应示例：**
 ```json
@@ -260,10 +263,45 @@ POST /api/v1/admin/sync
   "data": {
     "totalSynced": 50,
     "newCases": 5,
+    "updated": 3,
     "elapsed": "3.2s"
   }
 }
 ```
+
+**错误响应：**
+
+| HTTP 状态码 | code | message | 说明 |
+|------------|------|---------|------|
+| 500 | 50001 | HIS 数据库未配置连接（请设置 HIS_DB_USER / HIS_DB_PASS 环境变量） | HIS 连接未配置 |
+
+---
+
+#### CSV 手工导入（阶段一兜底）
+
+```
+POST /api/v1/admin/sync/csv
+Content-Type: application/x-www-form-urlencoded
+
+path=D:\data\cases.csv
+```
+
+**CSV 支持的中文表头：**
+
+| 列名 | 必填 | 说明 |
+|------|------|------|
+| 住院号 | 是 | 病例唯一标识 |
+| 姓名 | 是 | 患者姓名 |
+| 性别 | 否 | 男/女 |
+| 年龄 | 否 | 整数 |
+| 入院时间 | 否 | 支持多种日期格式 |
+| 出院时间 | 否 | 同上 |
+| 入院科室 | 否 | 匹配本地科室表 |
+| 住院医师 | 否 | 匹配医生映射表 |
+| 西医初步诊断 | 否 | 诊断信息 |
+| 主诉 | 否 | 存入 raw_data |
+
+**响应示例：** 同手动触发同步。
 
 ---
 

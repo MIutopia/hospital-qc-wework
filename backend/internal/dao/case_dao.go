@@ -1,6 +1,8 @@
 package dao
 
 import (
+	"time"
+
 	"hospital-qc-wework/internal/model"
 
 	"github.com/jmoiron/sqlx"
@@ -63,6 +65,76 @@ func (d *CaseDAO) UpdateQCStatus(id int64, status string) error {
 		WHERE id = ?
 	`, status, id)
 	return err
+}
+
+// UpsertByCaseNo 按住院号 upsert 病例
+// 返回 isNew：true=新建，false=更新
+func (d *CaseDAO) UpsertByCaseNo(c *model.InpatientCase) (bool, error) {
+	// 先查后写：判断是否存在
+	var exists int
+	err := d.db.Get(&exists, `SELECT COUNT(*) FROM inpatient_case WHERE case_no = ?`, c.CaseNo)
+	if err != nil {
+		return false, err
+	}
+
+	if exists > 0 {
+		// 更新
+		_, err = d.db.Exec(`
+			UPDATE inpatient_case
+			SET patient_name = ?, patient_gender = ?, patient_age = ?,
+			    admit_time = ?, discharge_time = ?, dept_id = ?, dept_name = ?,
+			    doctor_id = ?, doctor_name = ?, diagnosis = ?, case_status = ?,
+			    raw_data = ?, sync_time = GETDATE(), updated_at = GETDATE()
+			WHERE case_no = ?
+		`, c.PatientName, c.PatientGender, c.PatientAge,
+			c.AdmitTime, c.DischargeTime, c.DeptID, c.DeptName,
+			c.DoctorID, c.DoctorName, c.Diagnosis, c.CaseStatus,
+			c.RawData, c.CaseNo)
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	// 插入
+	_, err = d.db.Exec(`
+		INSERT INTO inpatient_case (case_no, patient_name, patient_gender, patient_age,
+		                            admit_time, discharge_time, dept_id, dept_name,
+		                            doctor_id, doctor_name, diagnosis, case_status,
+		                            raw_data, sync_time)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())
+	`, c.CaseNo, c.PatientName, c.PatientGender, c.PatientAge,
+		c.AdmitTime, c.DischargeTime, c.DeptID, c.DeptName,
+		c.DoctorID, c.DoctorName, c.Diagnosis, c.CaseStatus,
+		c.RawData)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// GetMaxSyncTime 获取最大同步时间（增量断点）
+// 无数据时返回空字符串（首次同步取最近30天）
+func (d *CaseDAO) GetMaxSyncTime() (string, error) {
+	var t *time.Time
+	err := d.db.Get(&t, `SELECT MAX(sync_time) FROM inpatient_case`)
+	if err != nil {
+		return "", err
+	}
+	if t == nil {
+		return "", nil
+	}
+	return t.Format("2006-01-02 15:04:05"), nil
+}
+
+// FindDeptIDByName 按科室名称查找科室 ID（找不到返回 0）
+func (d *CaseDAO) FindDeptIDByName(name string) int64 {
+	var id int64
+	err := d.db.Get(&id, `SELECT id FROM department WHERE dept_name = ?`, name)
+	if err != nil {
+		return 0
+	}
+	return id
 }
 
 // GetDoctorCases 获取医生的病例列表

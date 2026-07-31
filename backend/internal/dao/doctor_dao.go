@@ -35,6 +35,16 @@ func (d *DoctorDAO) GetByDoctorID(doctorID int64) (*model.DoctorWeWork, error) {
 	return &doc, nil
 }
 
+// FindIDByName 按医生姓名查找 doctor_id（找不到返回 nil）
+func (d *DoctorDAO) FindIDByName(name string) *int64 {
+	var doc model.DoctorWeWork
+	err := d.db.Get(&doc, `SELECT * FROM doctor_wework WHERE doctor_name = ? AND is_active = 1`, name)
+	if err != nil {
+		return nil
+	}
+	return &doc.DoctorID
+}
+
 // List 分页查询医生映射
 func (d *DoctorDAO) List(page, pageSize int) ([]model.DoctorWeWork, int, error) {
 	var total int

@@ -12,8 +12,6 @@ import (
 	"hospital-qc-wework/internal/dao"
 	"hospital-qc-wework/internal/model"
 	"hospital-qc-wework/pkg/tokenbucket"
-
-	"github.com/rs/zerolog/log"
 )
 
 // Pusher 企业微信消息推送服务

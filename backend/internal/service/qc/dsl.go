@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 )
 
 // RuleDSL 规则 DSL 定义（对应 qc_rule.rule_expression JSON）
@@ -37,19 +38,11 @@ type Env struct {
 
 // DSLParser DSL 解析器
 type DSLParser struct {
-	customFuncs map[string]interface{}
 }
 
 // NewDSLParser 创建 DSL 解析器
 func NewDSLParser() *DSLParser {
-	return &DSLParser{
-		customFuncs: map[string]interface{}{
-			"hoursSince":  hoursSince,
-			"daysSince":   daysSince,
-			"matches":     matches,
-			"contains":    contains,
-		},
-	}
+	return &DSLParser{}
 }
 
 // Parse 解析规则 DSL JSON 字符串
@@ -96,14 +89,27 @@ func (p *DSLParser) ToExpr(dsl *RuleDSL) (string, error) {
 }
 
 // Compile 编译 DSL 为可执行表达式
-func (p *DSLParser) Compile(dsl *RuleDSL) (expr.Expr, error) {
+func (p *DSLParser) Compile(dsl *RuleDSL) (*vm.Program, error) {
 	exprStr, err := p.ToExpr(dsl)
 	if err != nil {
 		return nil, err
 	}
 
 	// 编译表达式
-	program, err := expr.Compile(exprStr, expr.Env(&Env{}), expr.Functions(p.customFuncs))
+	program, err := expr.Compile(exprStr, expr.Env(&Env{}),
+		expr.Function("hoursSince", func(params ...any) (any, error) {
+			return hoursSince(params[0], params[1]), nil
+		}, func(reference, target any) float64 { return 0 }),
+		expr.Function("daysSince", func(params ...any) (any, error) {
+			return daysSince(params[0], params[1]), nil
+		}, func(reference, target any) float64 { return 0 }),
+		expr.Function("matches", func(params ...any) (any, error) {
+			return matches(params[0], params[1]), nil
+		}, func(str, pattern any) bool { return false }),
+		expr.Function("contains", func(params ...any) (any, error) {
+			return contains(params[0], params[1]), nil
+		}, func(str, substr any) bool { return false }),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("表达式编译失败 [%s]: %s: %w", dsl.RuleCode, exprStr, err)
 	}
@@ -112,7 +118,7 @@ func (p *DSLParser) Compile(dsl *RuleDSL) (expr.Expr, error) {
 }
 
 // Eval 执行表达式求值
-func (p *DSLParser) Eval(program expr.Expr, env *Env) (bool, error) {
+func (p *DSLParser) Eval(program *vm.Program, env *Env) (bool, error) {
 	output, err := expr.Run(program, env)
 	if err != nil {
 		return false, err

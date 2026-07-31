@@ -32,7 +32,7 @@ type DBConfig struct {
 	Port            int           `yaml:"port"`
 	Name            string        `yaml:"name"`
 	User            string        `yaml:"user"`
-	Password        string        `yaml:"-"` // 从环境变量读取
+	Password        string        `yaml:"password"` // 可由院方直接填写，环境变量 DB_PASS 优先
 	MaxOpenConns    int           `yaml:"max_open_conns"`
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
@@ -44,7 +44,7 @@ type HISDBConfig struct {
 	Port         int           `yaml:"port"`
 	Name         string        `yaml:"name"`
 	User         string        `yaml:"user"`
-	Password     string        `yaml:"-"` // 从环境变量读取
+	Password     string        `yaml:"password"` // 可由院方直接填写，环境变量 HIS_DB_PASS 优先
 	SyncInterval time.Duration `yaml:"sync_interval"`
 	SyncTime     string        `yaml:"sync_time"`
 }
@@ -126,6 +126,7 @@ func Load(path string) (*Config, error) {
 	// 从环境变量覆盖敏感字段
 	cfg.Database.Password = envOrDefault("DB_PASS", cfg.Database.Password)
 	cfg.HISDatabase.Password = envOrDefault("HIS_DB_PASS", cfg.HISDatabase.Password)
+	cfg.HISDatabase.User = envOrDefault("HIS_DB_USER", cfg.HISDatabase.User)
 	cfg.WeWork.CorpID = envOrDefault("WEWORK_CORP_ID", cfg.WeWork.CorpID)
 	cfg.WeWork.AgentSecret = envOrDefault("WEWORK_AGENT_SECRET", cfg.WeWork.AgentSecret)
 	cfg.JWT.Secret = envOrDefault("JWT_SECRET", cfg.JWT.Secret)

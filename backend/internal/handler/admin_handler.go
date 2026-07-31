@@ -6,6 +6,7 @@ import (
 	"hospital-qc-wework/internal/dao"
 	"hospital-qc-wework/internal/model"
 	"hospital-qc-wework/internal/service/qc"
+	"hospital-qc-wework/internal/service/sync"
 	"hospital-qc-wework/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -17,14 +18,16 @@ type AdminHandler struct {
 	doctorDAO  *dao.DoctorDAO
 	pushLogDAO *dao.PushLogDAO
 	qcEngine   *qc.Engine
+	syncSvc    *sync.SyncService
 }
 
-func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO *dao.PushLogDAO, qcEngine *qc.Engine) *AdminHandler {
+func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO *dao.PushLogDAO, qcEngine *qc.Engine, syncSvc *sync.SyncService) *AdminHandler {
 	return &AdminHandler{
 		ruleDAO:    ruleDAO,
 		doctorDAO:  doctorDAO,
 		pushLogDAO: pushLogDAO,
 		qcEngine:   qcEngine,
+		syncSvc:    syncSvc,
 	}
 }
 
@@ -38,9 +41,45 @@ func (h *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/admin/doctors", h.ListDoctors)
 	r.POST("/admin/doctors", h.UpsertDoctor)
 
+	r.POST("/admin/sync", h.RunSync)        // 手动触发 HIS 增量同步
+	r.POST("/admin/sync/csv", h.RunSyncCSV) // CSV 手工导入（阶段一兜底）
+
 	r.POST("/admin/qc/run", h.RunQC)
 
 	r.GET("/admin/push/logs", h.ListPushLogs)
+}
+
+// RunSync 手动触发 HIS 增量同步
+func (h *AdminHandler) RunSync(c *gin.Context) {
+	if h.syncSvc == nil {
+		response.ServerError(c, "HIS 同步服务未初始化（请先配置 HIS_DB_USER/HIS_DB_PASS 环境变量）")
+		return
+	}
+	result, err := h.syncSvc.RunSync()
+	if err != nil {
+		response.ServerError(c, "数据同步失败: "+err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+
+// RunSyncCSV CSV 手工导入（阶段一兜底）
+func (h *AdminHandler) RunSyncCSV(c *gin.Context) {
+	if h.syncSvc == nil {
+		response.ServerError(c, "同步服务未初始化")
+		return
+	}
+	path := c.PostForm("path")
+	if path == "" {
+		response.BadRequest(c, "缺少 path 参数（CSV 文件路径）")
+		return
+	}
+	result, err := h.syncSvc.SyncFromCSV(path)
+	if err != nil {
+		response.ServerError(c, "CSV 导入失败: "+err.Error())
+		return
+	}
+	response.Success(c, result)
 }
 
 // ListRules 规则列表

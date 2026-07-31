@@ -4,27 +4,40 @@ backend/*.exe
 backend/*.test
 *.out
 
-# Environment
-.env
-*.local.yaml
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Frontend
+# 依赖 / 构建产物
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+env/
+venv/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
 # Build output
 deploy/out/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 环境变量 / 密钥（切勿提交）
+.env
+.env.*
+*.secret
+*.pem
+*.key
+*.local.yaml
+
+# 日志 / 临时
+*.log
+tmp/
+.cache/

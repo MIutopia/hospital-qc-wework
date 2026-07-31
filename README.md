@@ -1,5 +1,7 @@
 # 住院病例质控企业微信推送系统
 
+> 本仓库通过 GitHub 进行项目管理：**版本控制 + Pull Request 协作 + Issue 任务看板**。
+
 某医院住院部每日产生大量住院病例。质控科通过本系统对病例进行规则化质量审核，发现问题后精准推送给责任医生，医生在企业微信中点击消息即可查看详细质控报告并确认整改。
 
 ## 核心流程
@@ -29,6 +31,14 @@ hospital-qc-wework/
 └── docs/             # 项目文档
 ```
 
+## 仓库约定
+
+- 默认分支：`main`，**受保护**，必须通过 Pull Request 合并，不能直接 push。
+- 开发分支：`feature/*`（新功能）、`fix/*`（缺陷修复）、`docs/*`（文档）。
+- 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)：
+  `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` / `test:`。
+- 任务跟踪：Issue + Project 看板，所有工作都应有关联 Issue。
+
 ## 快速开始
 
 ```bash
@@ -47,6 +57,7 @@ npm run dev
 
 - [项目模块分解与交接文档](docs/项目模块分解与交接文档.md) — 项目管理的总控文档
 - [API 接口文档](docs/api.md) — 全部接口定义
+- [BUILD_PLAN.md](BUILD_PLAN.md) — 构建方案
 
 ## 许可
 

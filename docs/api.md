@@ -253,7 +253,7 @@ DELETE /api/v1/admin/rules/:id
 POST /api/v1/admin/sync
 ```
 
-从 HIS 数据仓库 `med_record` 库增量同步住院病例到业务库 `inpatient_case`。
+从 HIS 数据仓库增量同步住院病例到业务库 `inpatient_case` 表。
 增量断点 = 业务库最大 `sync_time`；首次同步取最近 30 天。
 
 **响应示例：**

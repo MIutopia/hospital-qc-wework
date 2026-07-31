@@ -6,7 +6,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// HISDAO 访问 HIS 数据仓库（med_record 库）只读数据
+// HISDAO 访问 HIS 数据仓库只读数据（库名由配置 his_database.name 指定）
 type HISDAO struct {
 	db *sqlx.DB
 }
@@ -29,7 +29,7 @@ func (d *HISDAO) QueryNewCases(since *string, limit int) ([]model.HISCaseman, er
 		       病理诊断内容, 手术编码, 手术名称, 术者, 麻醉方式,
 		       主任医师, 主治医师, 责任护士, 住院医师, 病历质量,
 		       质控日期, 质控医生, 录入时间
-		FROM med_record.dbo.hospitalisation_case_man
+		FROM dbo.hospitalisation_case_man
 	`
 
 	// 增量模式：只取录入时间晚于同步断点的数据
@@ -59,7 +59,7 @@ func (d *HISDAO) QueryAdmissionRecords(since *string, limit int) ([]model.HISAdm
 		       主诉, 现病史, 既往史, 个人史, 婚育史, 月经史, 家族史,
 		       体格检查, 专科情况, 辅助检查,
 		       中医初步诊断, 西医初步诊断, 录入时间
-		FROM med_record.dbo.med_record_hospitail_rceord
+		FROM dbo.med_record_hospitail_rceord
 	`
 
 	args := []interface{}{limit}

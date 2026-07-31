@@ -9,25 +9,25 @@ server:
   read_timeout: 30s
   write_timeout: 30s
 
-# 业务数据库（本系统自身存储库，HospitalQC）
+# 业务数据库（本系统自身存储库）
 database:
-  server: "localhost"      # 与 HIS 数据仓库同一台服务器（院方要求单机部署）
+  server: "localhost"      # 【院方填写】SQL Server 服务器地址（单机部署可用 localhost）
   port: 1433
-  name: "HospitalQC"
-  user: "sa"               # 【院方填写】业务库登录账号（SQL Server 身份验证）
-  password: ""             # 【院方填写】业务库密码
+  name: ""                 # 【院方填写】业务数据库名
+  user: ""                 # 【院方填写】业务库登录账号（SQL Server 身份验证）
+  password: ""             # 【院方填写】业务库密码（或设置环境变量 DB_PASS）
   max_open_conns: 20
   max_idle_conns: 5
   conn_max_lifetime: 5m
   encrypt: false           # SQL Server 2014 不支持 encrypt，保持不加密
 
-# HIS 数据仓库（只读同步源，med_record 住院库）
+# HIS 数据仓库（只读同步源）
 his_database:
-  server: "localhost"      # 单机部署：与业务数据库同服务器（院方要求）
+  server: "localhost"      # 【院方填写】HIS 数据仓库服务器地址（单机部署可用 localhost）
   port: 1433
-  name: "database"       # HIS 数据仓库住院库（表结构已确认，仅需只读）
-  user: ""                 # 【院方填写】质控系统只读账号（如 qc_readonly，SQL Server 身份验证）
-  password: ""             # 【院方填写】只读账号密码
+  name: ""                 # 【院方填写】HIS 数据仓库库名（仅需只读权限）
+  user: ""                 # 【院方填写】HIS 只读账号（SQL Server 身份验证）
+  password: ""             # 【院方填写】HIS 只读账号密码（或设置环境变量 HIS_DB_PASS）
   sync_interval: "24h"     # 全量同步间隔
   sync_time: "23:00"       # 每日同步时间
 

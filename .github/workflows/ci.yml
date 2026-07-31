@@ -1,0 +1,90 @@
+# 住院病例质控系统 — CI 流水线
+# 触发条件：push 到 main/develop/feature/* 分支，或 Pull Request
+# 运行环境：Windows Server（与生产环境 SQL Server 2014 同架构）
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'feature/*']
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  # ===================================================
+  # 1. 编译 + 静态检查
+  # ===================================================
+  build-and-vet:
+    name: Build & Vet
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build -o hospital-qc.exe ./cmd/server/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hospital-qc-windows-amd64
+          path: backend/hospital-qc.exe
+          retention-days: 7
+
+  # ===================================================
+  # 2. 单元测试
+  # ===================================================
+  test:
+    name: Unit Tests
+    runs-on: windows-latest
+    needs: build-and-vet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: go test
+        run: go test ./... -v -cover -coverprofile=coverage.out
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: backend/coverage.out
+          retention-days: 7
+
+  # ===================================================
+  # 3. 安全扫描（可选：需配置 GitHub Secrets）
+  # ===================================================
+  security-scan:
+    name: Security Scan
+    runs-on: windows-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: .gitleaks.toml
+        continue-on-error: true

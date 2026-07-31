@@ -42,7 +42,7 @@ database:
 
 his_database:
   server: "localhost"   # 与业务库同一台服务器（单机部署）
-  name: "med_record"
+  name: ""              # 院方填写 HIS 数据仓库库名
   user: ""              # 院方填写只读账号
   password: ""          # 院方填写只读密码
 ```

@@ -17,7 +17,7 @@ import (
 )
 
 // SyncService 数据同步服务
-// 从 HIS 数据仓库（med_record 库）增量同步住院病例到业务库 inpatient_case 表。
+// 从 HIS 数据仓库增量同步住院病例到业务库 inpatient_case 表。
 type SyncService struct {
 	hisDAO    *dao.HISDAO
 	caseDAO   *dao.CaseDAO

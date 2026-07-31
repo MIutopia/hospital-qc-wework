@@ -5,6 +5,7 @@ import (
 	"hospital-qc-wework/internal/dao"
 	"hospital-qc-wework/internal/middleware"
 	"hospital-qc-wework/internal/service/auth"
+	"hospital-qc-wework/internal/service/push"
 	"hospital-qc-wework/internal/service/qc"
 	"hospital-qc-wework/internal/service/sync"
 	"hospital-qc-wework/pkg/response"
@@ -15,27 +16,47 @@ import (
 )
 
 // RegisterRoutes 注册全部路由
-func RegisterRoutes(r *gin.Engine, db *sqlx.DB, authSvc *auth.JWTService, cfg *config.Config) {
-	// 初始化 DAO
-	caseDAO := dao.NewCaseDAO(db)
-	ruleDAO := dao.NewRuleDAO(db)
-	resultDAO := dao.NewResultDAO(db)
-	doctorDAO := dao.NewDoctorDAO(db)
-	pushLogDAO := dao.NewPushLogDAO(db)
+func RegisterRoutes(r *gin.Engine, db *sqlx.DB, authSvc *auth.JWTService, cfg *config.Config, tokenMgr *push.TokenManager) {
+	dbReady := db != nil
+	weWorkReady := tokenMgr != nil && cfg.WeWork.CorpID != ""
 
-	// 初始化服务
-	qcEngine := qc.NewEngine(ruleDAO, caseDAO, resultDAO, cfg.QC.Concurrency)
+	// 初始化 DAO（db 可能为 nil，降级模式下仅健康检查可用）
+	var (
+		caseDAO    *dao.CaseDAO
+		ruleDAO    *dao.RuleDAO
+		resultDAO  *dao.ResultDAO
+		doctorDAO  *dao.DoctorDAO
+		pushLogDAO *dao.PushLogDAO
+		qcEngine   *qc.Engine
+		syncSvc    *sync.SyncService
+	)
+	if dbReady {
+		caseDAO = dao.NewCaseDAO(db)
+		ruleDAO = dao.NewRuleDAO(db)
+		resultDAO = dao.NewResultDAO(db)
+		doctorDAO = dao.NewDoctorDAO(db)
+		pushLogDAO = dao.NewPushLogDAO(db)
 
-	// 初始化 HIS 同步服务（仅当配置了 HIS_DB_USER 时连接；否则走 CSV 导入兜底）
-	var syncSvc *sync.SyncService
-	if cfg.HISDatabase.User != "" {
-		hisDB, err := dao.InitHISDB(cfg.HISDatabase)
-		if err != nil {
-			log.Warn().Err(err).Msg("HIS 数据库连接失败，自动同步不可用（可改用 CSV 导入）")
+		// 初始化质控引擎
+		qcEngine = qc.NewEngine(ruleDAO, caseDAO, resultDAO, cfg.QC.Concurrency)
+
+		// 企业微信推送服务状态日志（M4 阶段正式接入 Pusher）
+		if weWorkReady {
+			log.Info().Msg("企业微信凭证已配置，M4 阶段将接入推送服务")
 		} else {
-			hisDAO := dao.NewHISDAO(hisDB)
-			syncSvc = sync.NewSyncService(hisDAO, caseDAO, doctorDAO, cfg.QC.BatchSize)
-			log.Info().Str("db", cfg.HISDatabase.Name).Msg("HIS 数据仓库连接成功")
+			log.Warn().Msg("企业微信凭证未配置，消息推送功能暂不可用")
+		}
+
+		// 初始化 HIS 同步服务（仅当配置了 HIS_DB_USER 时连接；否则走 CSV 导入兜底）
+		if cfg.HISDatabase.User != "" {
+			hisDB, err := dao.InitHISDB(cfg.HISDatabase)
+			if err != nil {
+				log.Warn().Err(err).Msg("HIS 数据库连接失败，自动同步不可用（可改用 CSV 导入）")
+			} else {
+				hisDAO := dao.NewHISDAO(hisDB)
+				syncSvc = sync.NewSyncService(hisDAO, caseDAO, doctorDAO, cfg.QC.BatchSize)
+				log.Info().Str("db", cfg.HISDatabase.Name).Msg("HIS 数据仓库连接成功")
+			}
 		}
 	}
 
@@ -50,22 +71,27 @@ func RegisterRoutes(r *gin.Engine, db *sqlx.DB, authSvc *auth.JWTService, cfg *c
 
 	// ============ 公开接口 ============
 
-	// 健康检查
+	// 健康检查 — 返回基础设施状态
 	r.GET("/api/v1/health", func(c *gin.Context) {
 		response.Success(c, gin.H{
-			"status":  "ok",
-			"version": "1.0.0",
+			"status":    "ok",
+			"version":   "1.0.0",
+			"database":  dbReady,
+			"wework":    weWorkReady,
+			"serverTime": gin.H{"mode": cfg.Server.Mode},
 		})
 	})
 
-	// ============ H5 接口（需要 JWT 鉴权） ============
-	apiV1 := r.Group("/api/v1")
-	{
-		reportHandler.RegisterRoutes(apiV1, authMw)
-		doctorHandler.RegisterRoutes(apiV1, authMw)
-		deptHandler.RegisterRoutes(apiV1, authMw)
-	}
+	// ============ H5 接口（需要 JWT 鉴权 + 数据库） ============
+	if dbReady {
+		apiV1 := r.Group("/api/v1")
+		{
+			reportHandler.RegisterRoutes(apiV1, authMw)
+			doctorHandler.RegisterRoutes(apiV1, authMw)
+			deptHandler.RegisterRoutes(apiV1, authMw)
+		}
 
-	// ============ 管理接口 ============
-	adminHandler.RegisterRoutes(apiV1)
+		// ============ 管理接口 ============
+		adminHandler.RegisterRoutes(apiV1)
+	}
 }

@@ -85,19 +85,17 @@ type LogConfig struct {
 }
 
 // DSN 返回 SQL Server 连接字符串
+// SQL Server 2014 仅支持 TLS 1.0，Go 1.18+ 默认禁用了它
+// 使用 encrypt=disable 完全禁用传输层加密（医院内网单机部署，无中间人风险）
+// go-mssqldb 中 encrypt=false 仍会加密登录包从而触发 TLS 握手，必须用 DISABLE
 func (d DBConfig) DSN() string {
-	encrypt := "false"
-	if d.Encrypt {
-		encrypt = "true"
-	}
 	// 优先从环境变量读取密码
 	password := d.Password
 	if envPwd := os.Getenv("DB_PASS"); envPwd != "" {
 		password = envPwd
 	}
-	return "sqlserver://" + d.User + ":" + password +
-		"@" + d.Server + ":" + itoa(d.Port) +
-		"?database=" + d.Name + "&encrypt=" + encrypt
+	return fmt.Sprintf("server=%s;port=%s;user id=%s;password=%s;database=%s;encrypt=disable",
+		d.Server, itoa(d.Port), d.User, password, d.Name)
 }
 
 // HISDSN 返回 HIS 数据库连接字符串
@@ -106,9 +104,8 @@ func (d HISDBConfig) HISDSN() string {
 	if envPwd := os.Getenv("HIS_DB_PASS"); envPwd != "" {
 		password = envPwd
 	}
-	return "sqlserver://" + d.User + ":" + password +
-		"@" + d.Server + ":" + itoa(d.Port) +
-		"?database=" + d.Name + "&encrypt=false"
+	return fmt.Sprintf("server=%s;port=%s;user id=%s;password=%s;database=%s;encrypt=disable",
+		d.Server, itoa(d.Port), d.User, password, d.Name)
 }
 
 // Load 加载配置文件

@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// HISCaseman 对应 HIS 数据仓库 med_record 库的 hospitalisation_case_man 表（住院病案首页宽表）
+// HISCaseman 对应 HIS 数据仓库住院病案首页宽表 hospitalisation_case_man
 // 仅映射质控系统需要的字段；HIS 表为中文列名，通过 db 标签映射。
 type HISCaseman struct {
 	CaseSerial        int        `db:"首页序列"`
@@ -41,7 +41,7 @@ type HISCaseman struct {
 	InputTime         *time.Time `db:"录入时间"`
 }
 
-// HISAdmissionRecord 对应 med_record 库的 med_record_hospitail_rceord 表（住院入院记录）
+// HISAdmissionRecord 对应 HIS 数据仓库住院入院记录表 med_record_hospitail_rceord
 // 用于补充主诉、现病史等病历文书内容（存入 raw_data JSON）。
 type HISAdmissionRecord struct {
 	PatientName       string     `db:"患者姓名"`

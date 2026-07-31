@@ -61,12 +61,12 @@ flowchart LR
 ### 2.2 网络拓扑（单机部署）
 
 > **院方要求（2026-07-31）：** 项目部署到和数据库同一个服务器上。
-> 应用服务器 = 数据库服务器 = 服务器实例 `WIN-OKT2FAKMULV\SQLEXPRESS`。
+> 应用服务器 = 数据库服务器 = 服务器实例 `[院方服务器]\SQLEXPRESS`。
 
 ```mermaid
 graph TD
-    subgraph 内网单机["WIN-OKT2FAKMULV 单机（应用 + 数据库 + 中间件）"]
-        HIS[("HIS 数据仓库<br/>med_record / records / caiwu")]
+    subgraph 内网单机["[院方服务器] 单机（应用 + 数据库 + 中间件）"]
+        HIS[("HIS 数据仓库<br/>[HIS数据库] / records / caiwu")]
         DB[("HospitalQC<br/>业务数据库<br/>localhost:1433")]
         APP["后端服务<br/>hospital-qc.exe<br/>localhost:8080"]
         NGX["Nginx for Windows<br/>本地反向代理"]

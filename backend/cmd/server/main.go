@@ -12,12 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"hospital-qc-wework/internal/app"
 	"hospital-qc-wework/internal/config"
-	"hospital-qc-wework/internal/dao"
 	"hospital-qc-wework/internal/handler"
 	"hospital-qc-wework/internal/middleware"
-	"hospital-qc-wework/internal/service/auth"
-	"hospital-qc-wework/internal/service/push"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -42,26 +40,14 @@ func main() {
 	// 设置 Gin 运行模式
 	initGinMode(cfg.Server.Mode)
 
-	// 初始化数据库连接（开发环境无 SQL Server 时不阻塞启动）
-	db, err := dao.InitDB(cfg.Database)
-	if err != nil {
-		log.Warn().Err(err).Msg("数据库连接失败，服务将以降级模式启动（健康检查/日志正常，数据相关接口不可用）")
-	} else {
-		defer db.Close()
-		log.Info().Str("server", cfg.Database.Server).Int("port", cfg.Database.Port).Str("name", cfg.Database.Name).Msg("数据库连接成功")
-	}
+	// 装配应用上下文（数据库/企微不可用时代降级启动）
+	appCtx := app.New(cfg)
+	defer appCtx.Close()
 
-	// 初始化 JWT 鉴权服务
-	authSvc := auth.NewJWTService(cfg.JWT.Secret, cfg.JWT.ExpireHours)
-
-	// 初始化企业微信 Token 管理器（无凭证时仅记录警告，不阻塞启动）
-	var tokenMgr *push.TokenManager
-	if cfg.WeWork.CorpID != "" && cfg.WeWork.AgentSecret != "" && cfg.WeWork.AgentID != 0 {
-		tokenMgr = push.NewTokenManager(&cfg.WeWork)
-		go tokenMgr.RefreshLoop(cfg.WeWork.TokenRefreshInterval)
+	// 企业微信 Token 管理器后台刷新（凭证有效时）
+	if appCtx.TokenMgr != nil {
+		go appCtx.TokenMgr.RefreshLoop(cfg.WeWork.TokenRefreshInterval)
 		log.Info().Msg("企业微信 Token 管理器已启动")
-	} else {
-		log.Warn().Msg("企业微信凭证未配置（CorpID/AgentID/Secret），消息推送功能暂不可用。请设置环境变量 WEWORK_CORP_ID、WEWORK_AGENT_ID、WEWORK_AGENT_SECRET")
 	}
 
 	// 初始化 Gin 引擎
@@ -71,13 +57,13 @@ func main() {
 		middleware.Logger(),
 	)
 
-	// 注册路由（tokenMgr 可能为 nil，handler 内部做降级处理）
-	handler.RegisterRoutes(r, db, authSvc, cfg, tokenMgr)
+	// 注册路由
+	handler.RegisterRoutes(r, appCtx)
 
 	// 初始化应用内定时任务调度器
 	// TODO: 网络恢复后替换为 robfig/cron（PM 技术决策已确认）
 	sched := newSimpleScheduler()
-	setupScheduledTasks(sched, cfg)
+	setupScheduledTasks(sched, appCtx)
 	sched.Start()
 
 	// HTTP 服务器
@@ -211,26 +197,60 @@ func parseCronToHM(cronExpr string) string {
 	return fmt.Sprintf("%02s:%02s", parts[1], parts[0])
 }
 
-// setupScheduledTasks 配置定时任务
-// 注意：当前 cron 调度为占位实现，M3/M4 阶段联调时接入实际的 QC 引擎和推送服务
-func setupScheduledTasks(s *simpleScheduler, cfg *config.Config) {
-	// 每日质控任务
-	if cfg.QC.Cron != "" {
+// setupScheduledTasks 配置定时任务（M2 同步 / M3 质控 / M4 推送）
+func setupScheduledTasks(s *simpleScheduler, appCtx *app.App) {
+	cfg := appCtx.Cfg
+
+	// 1. HIS 数据同步（his_database.sync_time，如 23:00）
+	if appCtx.SyncSvc != nil && cfg.HISDatabase.SyncTime != "" {
+		s.Add("HIS Sync", cfg.HISDatabase.SyncTime, func() {
+			log.Info().Msg("[Scheduler] 开始定时 HIS 数据同步")
+			res, err := appCtx.SyncSvc.RunSync()
+			if err != nil {
+				log.Error().Err(err).Msg("[Scheduler] 定时同步失败")
+				return
+			}
+			log.Info().Int("total", res.TotalSynced).Int("new", res.NewCases).Int("updated", res.Updated).Msg("[Scheduler] 定时同步完成")
+		})
+		log.Info().Str("triggerAt", cfg.HISDatabase.SyncTime).Msg("HIS 数据同步定时任务已注册")
+	}
+
+	// 2. 每日质控（qc.cron，如 06:10）
+	if appCtx.QCEngine != nil && cfg.QC.Cron != "" {
 		hm := parseCronToHM(cfg.QC.Cron)
 		if hm != "" {
 			s.Add("QC Batch", hm, func() {
-				log.Info().Str("cron", cfg.QC.Cron).Str("time", hm).Msg("[Scheduler] 质控定时任务触发 — 待 M3/M4 联调接入")
+				log.Info().Msg("[Scheduler] 开始定时质控")
+				res, err := appCtx.QCEngine.RunBatch()
+				if err != nil {
+					log.Error().Err(err).Msg("[Scheduler] 定时质控失败")
+					return
+				}
+				log.Info().Str("batchId", res.BatchID).Int("defectCases", res.DefectCases).Msg("[Scheduler] 定时质控完成")
+
+				// 有缺陷病例 → 自动推送（M4）
+				if res.DefectCases > 0 && appCtx.PushSvc != nil {
+					if _, pushErr := appCtx.PushSvc.PushIssuedCases(); pushErr != nil {
+						log.Error().Err(pushErr).Msg("[Scheduler] 质控后自动推送失败")
+					}
+				}
 			})
 			log.Info().Str("cron", cfg.QC.Cron).Str("triggerAt", hm).Msg("质控定时任务已注册")
 		}
 	}
 
-	// 每日推送任务
-	if cfg.QC.PushCron != "" {
+	// 3. 每日推送（qc.push_cron，如 06:30）
+	if appCtx.PushSvc != nil && cfg.QC.PushCron != "" {
 		hm := parseCronToHM(cfg.QC.PushCron)
 		if hm != "" {
 			s.Add("Push Notify", hm, func() {
-				log.Info().Str("cron", cfg.QC.PushCron).Str("time", hm).Msg("[Scheduler] 推送定时任务触发 — 待 M4 联调接入")
+				log.Info().Msg("[Scheduler] 开始定时推送")
+				res, err := appCtx.PushSvc.PushIssuedCases()
+				if err != nil {
+					log.Error().Err(err).Msg("[Scheduler] 定时推送失败")
+					return
+				}
+				log.Info().Int("success", res.Success).Int("failed", res.Failed).Int("deferred", res.Deferred).Msg("[Scheduler] 定时推送完成")
 			})
 			log.Info().Str("cron", cfg.QC.PushCron).Str("triggerAt", hm).Msg("推送定时任务已注册")
 		}

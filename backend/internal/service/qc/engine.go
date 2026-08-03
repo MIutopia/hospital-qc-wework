@@ -1,7 +1,9 @@
 package qc
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,34 +163,8 @@ func (e *Engine) RunBatch() (*BatchResult, error) {
 func (e *Engine) executeForCase(caseItem model.InpatientCase, rules []model.QCRule, batchID string) []model.QCResult {
 	var results []model.QCResult
 
-	// 构建执行环境
-	var gender int
-	if caseItem.PatientGender != nil {
-		gender = *caseItem.PatientGender
-	}
-	var age int
-	if caseItem.PatientAge != nil {
-		age = *caseItem.PatientAge
-	}
-
-	// 解析 raw_data JSON
-	rawMap := make(map[string]interface{})
-	if caseItem.RawData != nil {
-		// 简化处理：实际需 json.Unmarshal
-		_ = *caseItem.RawData
-	}
-
-	env := &Env{
-		AdmitTime:     caseItem.AdmitTime,
-		DischargeTime: caseItem.DischargeTime,
-		Diagnosis:     safeString(caseItem.Diagnosis),
-		CaseStatus:    caseItem.CaseStatus,
-		RawData:       rawMap,
-		DeptName:      safeString(caseItem.DeptName),
-		DoctorName:    safeString(caseItem.DoctorName),
-		PatientGender: gender,
-		PatientAge:    age,
-	}
+	// 构建执行环境（含 raw_data JSON 解析）
+	env := buildEnv(caseItem)
 
 	for _, rule := range rules {
 		// 解析 DSL
@@ -241,4 +217,36 @@ func safeString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// buildEnv 从病例记录构造规则执行环境
+// raw_data 为 JSON 字符串（病历文书内容），解析失败时按空 map 处理
+func buildEnv(caseItem model.InpatientCase) *Env {
+	var gender int
+	if caseItem.PatientGender != nil {
+		gender = *caseItem.PatientGender
+	}
+	var age int
+	if caseItem.PatientAge != nil {
+		age = *caseItem.PatientAge
+	}
+
+	rawMap := make(map[string]interface{})
+	if caseItem.RawData != nil && strings.TrimSpace(*caseItem.RawData) != "" {
+		if err := json.Unmarshal([]byte(*caseItem.RawData), &rawMap); err != nil {
+			log.Warn().Err(err).Int64("caseId", caseItem.ID).Msg("raw_data JSON 解析失败，按空对象处理")
+		}
+	}
+
+	return &Env{
+		AdmitTime:     caseItem.AdmitTime,
+		DischargeTime: caseItem.DischargeTime,
+		Diagnosis:     safeString(caseItem.Diagnosis),
+		CaseStatus:    caseItem.CaseStatus,
+		RawData:       rawMap,
+		DeptName:      safeString(caseItem.DeptName),
+		DoctorName:    safeString(caseItem.DoctorName),
+		PatientGender: gender,
+		PatientAge:    age,
+	}
 }

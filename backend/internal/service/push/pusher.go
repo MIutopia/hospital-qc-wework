@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"hospital-qc-wework/internal/config"
-	"hospital-qc-wework/internal/dao"
 	"hospital-qc-wework/internal/model"
 	"hospital-qc-wework/pkg/tokenbucket"
 )
@@ -19,7 +18,6 @@ type Pusher struct {
 	cfg        *config.WeWorkConfig
 	tokenMgr   *TokenManager
 	httpClient *http.Client
-	pushLogDAO *dao.PushLogDAO
 	limiter    *tokenbucket.Bucket
 }
 
@@ -75,25 +73,26 @@ type pushResponse struct {
 }
 
 // NewPusher 创建推送服务
-func NewPusher(cfg *config.WeWorkConfig, tokenMgr *TokenManager, pushLogDAO *dao.PushLogDAO) *Pusher {
+func NewPusher(cfg *config.WeWorkConfig, tokenMgr *TokenManager) *Pusher {
 	return &Pusher{
 		cfg:      cfg,
 		tokenMgr: tokenMgr,
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-		pushLogDAO: pushLogDAO,
-		limiter:    tokenbucket.New(10, 100), // 10次/秒，桶容量100
+		limiter: tokenbucket.New(10, 100), // 10次/秒，桶容量100
 	}
 }
 
 // SendCard 发送模板卡片消息
+// h5BaseURL: H5 页面域名（企业微信卡片跳转地址）；token: H5 鉴权 JWT
+// 返回企业微信 API 原始响应体（含 msgid），供 PushService 记录推送日志
 func (p *Pusher) SendCard(caseItem *model.InpatientCase, defectSummary *model.DefectSummary,
-	defects []model.DefectItem, doctor *model.DoctorWeWork, token string) error {
+	defects []model.DefectItem, doctor *model.DoctorWeWork, h5BaseURL, token string) (string, error) {
 
 	// 令牌桶限频
 	if !p.limiter.WaitMax(1, 30*time.Second) {
-		return fmt.Errorf("推送限频等待超时")
+		return "", fmt.Errorf("推送限频等待超时")
 	}
 
 	// 构建消息
@@ -131,61 +130,51 @@ func (p *Pusher) SendCard(caseItem *model.InpatientCase, defectSummary *model.De
 			},
 			CardAction: CardAction{
 				Type: 1,
-				URL:  fmt.Sprintf("%s/report?caseId=%d&token=%s", p.cfg.APIBaseURL, caseItem.ID, token),
+				URL:  fmt.Sprintf("%s/report?caseId=%d&token=%s", h5BaseURL, caseItem.ID, token),
 			},
 			TaskID: fmt.Sprintf("QC%d", caseItem.ID),
 		},
 	}
 
-	return p.send(msg, caseItem.ID, doctor.WeWorkUserID)
+	return p.send(msg)
 }
 
-// send 发送消息到企业微信 API
-func (p *Pusher) send(msg CardMessage, caseID int64, receiverUserID string) error {
+// send 发送消息到企业微信 API（推送日志由 PushService 统一记录）
+// 返回企业微信 API 原始响应体（含 msgid）
+func (p *Pusher) send(msg CardMessage) (string, error) {
 	token, err := p.tokenMgr.GetToken()
 	if err != nil {
-		return fmt.Errorf("获取 access_token 失败: %w", err)
+		return "", fmt.Errorf("获取 access_token 失败: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/cgi-bin/message/send?access_token=%s", p.cfg.APIBaseURL, token)
 
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("序列化消息失败: %w", err)
+		return "", fmt.Errorf("序列化消息失败: %w", err)
 	}
 
 	resp, err := p.httpClient.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("请求企业微信 API 失败: %w", err)
+		return "", fmt.Errorf("请求企业微信 API 失败: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("读取响应失败: %w", err)
+		return "", fmt.Errorf("读取响应失败: %w", err)
 	}
 
 	var pr pushResponse
 	if err := json.Unmarshal(respBody, &pr); err != nil {
-		return fmt.Errorf("解析响应失败: %w", err)
+		return "", fmt.Errorf("解析响应失败: %w", err)
 	}
-
-	// 记录推送日志
-	respStr := string(respBody)
-	p.pushLogDAO.Create(&model.PushLog{
-		CaseID:         caseID,
-		ReceiverUserID: receiverUserID,
-		PushType:       model.PushTypeCard,
-		PushContent:    &respStr,
-	})
 
 	if pr.Errcode != 0 {
-		// 更新状态为失败
-		p.pushLogDAO.UpdateStatus(0, model.PushStatusFailed, respStr)
-		return fmt.Errorf("企业微信 API 错误: %d - %s", pr.Errcode, pr.Errmsg)
+		return string(respBody), fmt.Errorf("企业微信 API 错误: %d - %s", pr.Errcode, pr.Errmsg)
 	}
 
-	return nil
+	return string(respBody), nil
 }
 
 // safeDeidentify 脱敏患者姓名（保留首字）

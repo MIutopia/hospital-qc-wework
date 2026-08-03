@@ -15,18 +15,20 @@ func NewPushLogDAO(db *sqlx.DB) *PushLogDAO {
 	return &PushLogDAO{db: db}
 }
 
-// Create 创建推送记录
+// Create 创建推送记录（SQL Server 用 OUTPUT INSERTED.id 取回新记录 ID）
 func (d *PushLogDAO) Create(log *model.PushLog) (int64, error) {
-	result, err := d.db.Exec(`
+	var id int64
+	err := d.db.Get(&id, `
 		INSERT INTO push_log (case_id, qc_result_ids, receiver_userid,
 		                      push_type, push_content, push_status)
+		OUTPUT INSERTED.id
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, log.CaseID, log.QCResultIDs, log.ReceiverUserID,
 		log.PushType, log.PushContent, log.PushStatus)
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	return id, nil
 }
 
 // UpdateStatus 更新推送状态

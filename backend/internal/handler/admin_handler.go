@@ -5,11 +5,13 @@ import (
 
 	"hospital-qc-wework/internal/dao"
 	"hospital-qc-wework/internal/model"
+	"hospital-qc-wework/internal/service/push"
 	"hospital-qc-wework/internal/service/qc"
 	"hospital-qc-wework/internal/service/sync"
 	"hospital-qc-wework/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 // AdminHandler 管理后台处理器
@@ -20,9 +22,10 @@ type AdminHandler struct {
 	syncLogDAO *dao.SyncLogDAO
 	qcEngine   *qc.Engine
 	syncSvc    *sync.SyncService
+	pushSvc    *push.PushService
 }
 
-func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO *dao.PushLogDAO, syncLogDAO *dao.SyncLogDAO, qcEngine *qc.Engine, syncSvc *sync.SyncService) *AdminHandler {
+func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO *dao.PushLogDAO, syncLogDAO *dao.SyncLogDAO, qcEngine *qc.Engine, syncSvc *sync.SyncService, pushSvc *push.PushService) *AdminHandler {
 	return &AdminHandler{
 		ruleDAO:    ruleDAO,
 		doctorDAO:  doctorDAO,
@@ -30,6 +33,7 @@ func NewAdminHandler(ruleDAO *dao.RuleDAO, doctorDAO *dao.DoctorDAO, pushLogDAO 
 		syncLogDAO: syncLogDAO,
 		qcEngine:   qcEngine,
 		syncSvc:    syncSvc,
+		pushSvc:    pushSvc,
 	}
 }
 
@@ -178,11 +182,31 @@ func (h *AdminHandler) UpsertDoctor(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// RunQC 手动触发质控
+// RunQC 手动触发质控（执行完成后自动推送 ISSUED 病例）
 func (h *AdminHandler) RunQC(c *gin.Context) {
 	result, err := h.qcEngine.RunBatch()
 	if err != nil {
 		response.ServerError(c, "质控执行失败: "+err.Error())
+		return
+	}
+
+	// 存在缺陷病例 → 触发推送（M4）
+	if result.DefectCases > 0 && h.pushSvc != nil {
+		pushResult, pushErr := h.pushSvc.PushIssuedCases()
+		if pushErr != nil {
+			log.Warn().Err(pushErr).Msg("质控后自动推送失败")
+		} else {
+			log.Info().Int("pushed", pushResult.Success).Int("deferred", pushResult.Deferred).Msg("质控后自动推送完成")
+		}
+		response.Success(c, gin.H{
+			"batchId":      result.BatchID,
+			"totalCases":   result.TotalCases,
+			"defectCases":  result.DefectCases,
+			"totalDefects": result.TotalDefects,
+			"passedCases":  result.PassedCases,
+			"elapsed":      result.Elapsed,
+			"push":         pushResult,
+		})
 		return
 	}
 	response.Success(c, result)

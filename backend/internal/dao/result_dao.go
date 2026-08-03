@@ -60,6 +60,27 @@ func (d *ResultDAO) GetByCaseID(caseID int64) ([]model.QCResult, error) {
 	return results, nil
 }
 
+// CountDefectLevelsByDeptDate 统计某科室某质控日期的 A/B 级缺陷数量
+func (d *ResultDAO) CountDefectLevelsByDeptDate(deptID int64, date string) (int, int, error) {
+	var row struct {
+		LevelA int `db:"levelA"`
+		LevelB int `db:"levelB"`
+	}
+	err := d.db.Get(&row, `
+		SELECT
+			SUM(CASE WHEN qr.rule_level = 'A' AND r.is_defect = 1 THEN 1 ELSE 0 END) AS levelA,
+			SUM(CASE WHEN qr.rule_level = 'B' AND r.is_defect = 1 THEN 1 ELSE 0 END) AS levelB
+		FROM qc_result r
+		JOIN qc_rule qr ON r.rule_id = qr.id
+		JOIN inpatient_case c ON c.id = r.case_id
+		WHERE c.dept_id = ? AND CONVERT(date, c.qc_time) = ?
+	`, deptID, date)
+	if err != nil {
+		return 0, 0, err
+	}
+	return row.LevelA, row.LevelB, nil
+}
+
 // GetDefectSummary 获取病例的缺陷汇总
 func (d *ResultDAO) GetDefectSummary(caseID int64) (*model.DefectSummary, error) {
 	var summary model.DefectSummary

@@ -113,6 +113,57 @@ func (d *CaseDAO) UpsertByCaseNo(c *model.InpatientCase) (bool, error) {
 	return true, nil
 }
 
+// GetIssuedUnpushed 查询已发出待整改但尚未成功推送的病例
+// 用于定时推送任务：推送成功（SUCCESS）的病例不再重复推送；
+// FAILED/DEFERRED 的病例会在下一周期自动重试。
+func (d *CaseDAO) GetIssuedUnpushed() ([]model.InpatientCase, error) {
+	var cases []model.InpatientCase
+	err := d.db.Select(&cases, `
+		SELECT c.id, c.case_no, c.patient_name, c.patient_gender, c.patient_age,
+		       c.admit_time, c.discharge_time, c.dept_id, c.dept_name,
+		       c.doctor_id, c.doctor_name, c.diagnosis, c.case_status,
+		       c.raw_data, c.sync_time, c.qc_status, c.qc_time,
+		       c.created_at, c.updated_at
+		FROM inpatient_case c
+		WHERE c.qc_status = 'ISSUED'
+		  AND NOT EXISTS (
+		      SELECT 1 FROM push_log p
+		      WHERE p.case_id = c.id AND p.push_status = 'SUCCESS'
+		  )
+		ORDER BY c.qc_time ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	return cases, nil
+}
+
+// CountQCCasesByDeptDate 统计某科室某质控日期（qc_time）的病例总数
+func (d *CaseDAO) CountQCCasesByDeptDate(deptID int64, date string) (int, error) {
+	var n int
+	err := d.db.Get(&n, `
+		SELECT COUNT(*) FROM inpatient_case
+		WHERE dept_id = ? AND CONVERT(date, qc_time) = ?
+	`, deptID, date)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// CountDefectCasesByDeptDate 统计某科室某质控日期存在缺陷（ISSUED）的病例数
+func (d *CaseDAO) CountDefectCasesByDeptDate(deptID int64, date string) (int, error) {
+	var n int
+	err := d.db.Get(&n, `
+		SELECT COUNT(*) FROM inpatient_case
+		WHERE dept_id = ? AND qc_status = 'ISSUED' AND CONVERT(date, qc_time) = ?
+	`, deptID, date)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // GetMaxSyncTime 获取最大同步时间（增量断点）
 // 无数据时返回空字符串（首次同步取最近30天）
 func (d *CaseDAO) GetMaxSyncTime() (string, error) {

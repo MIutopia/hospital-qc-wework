@@ -18,6 +18,12 @@ type Config struct {
 	Redis       RedisConfig       `yaml:"redis"`
 	QC          QCConfig          `yaml:"qc"`
 	Log         LogConfig         `yaml:"log"`
+	H5          H5Config          `yaml:"h5"`
+}
+
+// H5Config H5 页面配置
+type H5Config struct {
+	BaseURL string `yaml:"base_url"` // 从环境变量 H5_BASE_URL 读取，企业微信卡片跳转地址
 }
 
 type ServerConfig struct {
@@ -127,6 +133,7 @@ func Load(path string) (*Config, error) {
 	cfg.WeWork.CorpID = envOrDefault("WEWORK_CORP_ID", cfg.WeWork.CorpID)
 	cfg.WeWork.AgentSecret = envOrDefault("WEWORK_AGENT_SECRET", cfg.WeWork.AgentSecret)
 	cfg.JWT.Secret = envOrDefault("JWT_SECRET", cfg.JWT.Secret)
+	cfg.H5.BaseURL = envOrDefault("H5_BASE_URL", cfg.H5.BaseURL)
 
 	// AgentID 从环境变量覆盖（int 类型）
 	if agentID := os.Getenv("WEWORK_AGENT_ID"); agentID != "" {

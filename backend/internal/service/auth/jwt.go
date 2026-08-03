@@ -54,6 +54,24 @@ func (s *JWTService) GenerateToken(doctorID, caseID int64) (string, error) {
 	return token.SignedString([]byte(s.secret))
 }
 
+// GenerateH5Token 生成 H5 页面访问令牌（企业微信卡片跳转链接使用）
+// H5 链接中的 token 需要比登录态更长的有效期（7 天），避免卡片链接过早失效
+func (s *JWTService) GenerateH5Token(doctorID, caseID int64) (string, error) {
+	now := time.Now()
+	claims := &Claims{
+		DoctorID: doctorID,
+		CaseID:   caseID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(7 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			ID:        fmt.Sprintf("h5_%d_%d", now.UnixNano(), doctorID),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(s.secret))
+}
+
 // ValidateToken 验证 JWT Token，返回 Claims
 func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {

@@ -45,6 +45,16 @@ func (d *DoctorDAO) FindIDByName(name string) *int64 {
 	return &doc.DoctorID
 }
 
+// GetDeptNameByID 按科室 ID 查询科室名称（找不到返回 "-"）
+func (d *DoctorDAO) GetDeptNameByID(deptID int64) string {
+	var name string
+	err := d.db.Get(&name, `SELECT dept_name FROM department WHERE id = ?`, deptID)
+	if err != nil {
+		return "-"
+	}
+	return name
+}
+
 // List 分页查询医生映射
 func (d *DoctorDAO) List(page, pageSize int) ([]model.DoctorWeWork, int, error) {
 	var total int

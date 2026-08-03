@@ -38,6 +38,22 @@ hospital-qc-wework/
   `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` / `test:`。
 - 任务跟踪：GitHub Issues + Project 看板，所有工作都应有关联 Issue。
 
+## GitHub 协作与看板（2026-08-03 建立）
+
+| 入口 | 链接 |
+|------|------|
+| Issues 看板 | https://github.com/MIutopia/hospital-qc-wework/issues |
+| 里程碑「8周实施计划 (M1-M7)」 | https://github.com/MIutopia/hospital-qc-wework/milestone/1 |
+| 模块标签（M1~M7） | https://github.com/MIutopia/hospital-qc-wework/labels |
+| 状态标签（待开始/进行中/已完成/阻塞/外部依赖） | 同上 |
+| 优先级标签（P0/P1/P2） | 同上 |
+
+看板规则：
+- Issue 命名：`[模块][优先级][状态] 任务标题`
+- 每个任务必须有模块 + 状态标签，关键任务挂「8周实施计划」里程碑
+- 完成代码改动并提交后，同步更新 Issue 状态/勾选验收项（与文档同步约束一致）
+- 遗留问题（BUILD_PLAN 相关 #1/#2）已过时，以 docs/ 下任务卡与看板为准
+
 ## 快速开始
 
 ```bash
